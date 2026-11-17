@@ -3,16 +3,16 @@
 </style></head><body><header><h1>Maler Volquardsen <small>Cloud-Neustart</small></h1><div class="muted">Arbeitszeiten manuell · Baustellen · Material · Urlaub · Krankheit</div></header><main>
 <div class="card" id="setup"><h2>Cloud-Verbindung einrichten</h2><p class="muted">Einmalig die URL und den öffentlichen anon/publishable key deines NEUEN Supabase-Projekts eingeben. Niemals den service_role-Schlüssel.</p><label>Projekt-URL<input id="url" placeholder="https://xxxx.supabase.co"></label><label>Publishable/anon key<input id="key" placeholder="sb_publishable_... oder eyJ..."></label><button id="connect">Verbinden</button></div>
 <div class="card hidden" id="login"><h2>Anmelden</h2><label>E-Mail<input id="email" type="email"></label><label>Passwort<input id="password" type="password"></label><button id="signIn">Anmelden</button><p class="muted">Mitarbeiter werden im neuen Supabase-Projekt unter Authentication → Users eingeladen. Nach der Einladung können sie sich mit ihrem Passwort anmelden.</p></div>
-<div class="hidden" id="app"><div class="card"><span id="who"></span> <button class="secondary" id="signOut">Abmelden</button></div><nav><button data-view="overview">Übersicht</button><button data-view="hours">Stunden / Krankheit</button><button data-view="sites">Baustellen</button><button data-view="materials">Material</button><button data-view="vacation">Urlaub</button><button data-view="team">Team</button></nav>
+<div class="hidden" id="app"><div class="card"><span id="who"></span> <button class="secondary" id="signOut">Abmelden</button></div><nav><button data-view="overview">Übersicht</button><button data-view="hours">Stunden / Krankheit</button><button data-view="reports">Wochen / Monate</button><button data-view="sites">Baustellen</button><button data-view="materials">Material</button><button data-view="vacation">Urlaub</button><button data-view="team">Team</button></nav>
 <section id="overview" class="card"><h2>Meine Übersicht</h2><div id="overviewContent"></div></section>
 <section id="hours" class="card hidden"><h2>Stunden oder Krankheit eintragen</h2><form id="hoursForm"><label>Art<select id="entryKind"><option value="work">Arbeitszeit</option><option value="sick">Krankheit</option></select></label><label>Datum<input id="entryDay" type="date" required></label><div id="workFields"><label>Baustelle<select id="entrySite"></select></label><label>Stunden gesamt (inkl. Pause)<input id="gross" type="number" min="0.25" max="24" step=".25" value="8"></label><label>Pause in Minuten<input id="pause" type="number" min="0" max="1440" value="30"></label></div><label>Notiz<input id="entryNote"></label><button>Speichern</button></form><h2>Einträge</h2><div class="scroll" id="entryList"></div></section>
-<section id="sites" class="card hidden"><h2>Baustellen</h2><form id="siteForm" class="adminOnly"><label>Name<input id="siteName" required></label><label>Adresse<input id="siteAddress"></label><button>Baustelle anlegen</button></form><div class="scroll" id="siteList"></div></section>
+<section id="reports" class="card hidden"><h2>Wochen- und Monatsübersicht</h2><p class="muted">Mitarbeiter einzeln auswählen. Urlaub wird ohne Stunden angezeigt.</p><div class="grid"><label>Mitarbeiter<select id="reportUser"></select></label><label>Ansicht<select id="reportMode"><option value="week">Woche</option><option value="month">Monat</option></select></label><label>Datum innerhalb des Zeitraums<input id="reportDate" type="date"></label></div><div id="reportSummary" class="card"></div><div class="scroll" id="reportTable"></div><p class="muted">Freigabe und Korrektur sind nur für den Chef möglich. Bereits freigegebene Einträge können Mitarbeiter nicht mehr ändern.</p></section><section id="sites" class="card hidden"><h2>Baustellen</h2><form id="siteForm" class="adminOnly"><label>Name<input id="siteName" required></label><label>Adresse<input id="siteAddress"></label><button>Baustelle anlegen</button></form><div class="scroll" id="siteList"></div></section>
 <section id="materials" class="card hidden"><h2>Materialverbrauch</h2><form id="materialForm"><label>Baustelle<select id="materialSite"></select></label><label>Material<input id="materialName" required></label><label>Menge<input id="materialQty" type="number" min=".01" step=".01" required></label><label>Einheit<select id="materialUnit"><option>Liter</option><option>kg</option><option>Stück</option><option>Rolle</option><option>Eimer</option></select></label><button>Verbrauch eintragen</button></form><div class="scroll" id="materialList"></div></section>
 <section id="vacation" class="card hidden"><h2>Urlaub</h2><p class="muted">Urlaub wird ausschließlich vom Chef nach persönlicher Absprache eingetragen. Er zählt nicht als geleistete Arbeitszeit.</p><form id="vacationForm" class="adminOnly"><label>Mitarbeiter<select id="vacationUser"></select></label><label>Von<input id="vacationFrom" type="date" required></label><label>Bis<input id="vacationTo" type="date" required></label><button>Urlaub freigeben</button></form><div class="scroll" id="vacationList"></div></section>
 <section id="team" class="card hidden"><h2>Team und Baustellenzuordnung</h2><p class="muted">Mitarbeiter zuerst in Supabase Authentication → Users einladen. Danach hier einer Baustelle zuordnen.</p><form id="memberForm"><label>Mitarbeiter<select id="memberUser"></select></label><label>Baustelle<select id="memberSite"></select></label><button>Zuweisen</button></form><div class="scroll" id="teamList"></div></section>
 </div><div id="message" role="status"></div></main><script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-const $=x=>document.getElementById(x);let sb=null,me=null,profile=null,sites=[],profiles=[];
+const $=x=>document.getElementById(x);let sb=null,me=null,profile=null,sites=[],profiles=[],reportEntries=[],reportVacations=[];
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(s,bad=false)=>{$('message').textContent=s;$('message').className=bad?'error':'success'};
 const fail=e=>{msg(e.message||String(e),true);console.error(e)};
@@ -22,6 +22,44 @@ function switchView(id){document.querySelectorAll('#app section').forEach(s=>s.c
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 $('entryKind').onchange=()=>$('workFields').classList.toggle('hidden',$('entryKind').value==='sick');
 $('entryDay').value=new Date().toLocaleDateString('sv-SE');
+$('reportDate').value=new Date().toLocaleDateString('sv-SE');
+['reportUser','reportMode','reportDate'].forEach(id=>$(id).addEventListener('change',drawReport));
+function iso(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function drawReport(){
+ const uid=$('reportUser').value,raw=$('reportDate').value;if(!uid||!raw)return;
+ const d=new Date(raw+'T12:00:00');if(Number.isNaN(d.getTime()))return;
+ const weekly=$('reportMode').value==='week';let first,last;
+ if(weekly){first=new Date(d);first.setDate(d.getDate()-(d.getDay()+6)%7);last=new Date(first);last.setDate(first.getDate()+6)}
+ else{first=new Date(d.getFullYear(),d.getMonth(),1);last=new Date(d.getFullYear(),d.getMonth()+1,0)}
+ const a=iso(first),b=iso(last),es=reportEntries.filter(x=>x.user_id===uid&&x.day>=a&&x.day<=b),vs=reportVacations.filter(x=>x.user_id===uid&&x.start_day<=b&&x.end_day>=a);
+ const days=[];for(let t=new Date(first);t<=last;t.setDate(t.getDate()+1))days.push(iso(t));
+ const sum=es.filter(x=>x.kind==='work').reduce((n,x)=>n+x.minutes,0),open=es.filter(x=>!x.approved).length;
+ $('reportSummary').textContent=`${a} bis ${b} · ${(sum/60).toLocaleString('de-DE',{maximumFractionDigits:2})} Netto-Stunden · ${open} offene Einträge`;
+ const admin=profile?.role==='admin';
+ const rows=[];for(const day of days){const matches=es.filter(x=>x.day===day),vac=vs.some(x=>x.start_day<=day&&x.end_day>=day);
+ if(!matches.length&&!vac)continue;
+ for(const x of matches){const site=sites.find(s=>s.id===x.site_id)?.name||'–';
+ const controls=admin?`<button class="secondary" data-act="edit" data-id="${x.id}">Bearbeiten</button> <button class="secondary" data-act="approve" data-id="${x.id}" ${x.approved?'disabled':''}>${x.approved?'Freigegeben':'Freigeben'}</button>`:(x.approved?'Freigegeben':'Offen');
+ rows.push(`<tr><td>${day}</td><td>${x.kind==='sick'?'Krankheit':escapeHTML(site)}</td><td>${x.kind==='work'?(x.minutes/60).toLocaleString('de-DE',{maximumFractionDigits:2})+' h':'–'}</td><td>${controls}</td></tr>`)}
+ if(vac)rows.push(`<tr><td>${day}</td><td>Urlaub</td><td>–</td><td>Vom Chef eingetragen</td></tr>`);
+ }
+ $('reportTable').innerHTML=rows.length?tbl(['Datum','Art / Baustelle','Nettozeit','Aktion'],rows):'<p>Keine Einträge in diesem Zeitraum.</p>';
+}
+$('reportTable').onclick=async e=>{
+ const b=e.target.closest('button[data-act]');if(!b||profile?.role!=='admin')return;
+ const entry=reportEntries.find(x=>x.id===b.dataset.id);if(!entry)return;
+ try{
+ if(b.dataset.act==='approve'){
+  const {error}=await sb.from('entries').update({approved:true}).eq('id',entry.id);if(error)throw error;
+ }else{
+  if(entry.kind!=='work'){msg('Krankheitstage können hier nicht in Stunden umgewandelt werden.',true);return}
+  const v=prompt('Neue Nettoarbeitszeit in Stunden (z. B. 7,5):',String(entry.minutes/60).replace('.',','));if(v===null)return;
+  const n=Number(v.replace(',','.'));if(!Number.isFinite(n)||n<=0||n>24)throw Error('Bitte eine gültige Stundenzahl von 0 bis 24 eingeben.');
+  const {error}=await sb.from('entries').update({minutes:Math.round(n*60),approved:false}).eq('id',entry.id);if(error)throw error;
+ }
+ await load();switchView('reports');msg('Änderung gespeichert');
+ }catch(err){fail(err)}
+};
 $('connect').onclick=async()=>{
  try{
  const url=$('url').value.trim(),key=$('key').value.trim();
@@ -53,6 +91,12 @@ async function load(){
  selectOptions($('memberUser'),profiles.map(x=>({id:x.id,name:x.display_name||x.id})));
  selectOptions($('vacationUser'),profiles.map(x=>({id:x.id,name:x.display_name||x.id})));
  const entries=await query('entries'),vacations=await query('vacations'),materials=await query('material_usage');
+ reportEntries=entries;reportVacations=vacations;
+ const selected=$('reportUser').value;
+ selectOptions($('reportUser'),profiles.map(x=>({id:x.id,name:x.display_name|| (x.id===me.id?'Ich':x.id)})));
+ if([...$('reportUser').options].some(o=>o.value===selected))$('reportUser').value=selected;
+ else if(!admin)$('reportUser').value=me.id;
+ drawReport();
  $('overviewContent').innerHTML=`<div class="grid"><div class="card"><h2>${sites.length}</h2>Meine Baustellen</div><div class="card"><h2>${(entries.filter(x=>x.kind==='work').reduce((a,x)=>a+x.minutes,0)/60).toFixed(2)} h</h2>${admin?'Erfasste':'Meine'} Nettoarbeitszeit</div><div class="card"><h2>${vacations.length}</h2>Urlaubseinträge</div></div>`;
  $('entryList').innerHTML=tbl(['Datum','Mitarbeiter','Art','Baustelle','Nettozeit','Freigabe'],entries.sort((a,b)=>b.day.localeCompare(a.day)).map(x=>`<tr><td>${escapeHTML(x.day)}</td><td>${escapeHTML(profiles.find(p=>p.id===x.user_id)?.display_name||'Ich')}</td><td>${x.kind==='sick'?'Krankheit':'Arbeitszeit'}</td><td>${escapeHTML(sites.find(s=>s.id===x.site_id)?.name||'–')}</td><td>${x.kind==='work'?(x.minutes/60).toFixed(2)+' h':'–'}</td><td>${x.approved?'Ja':'Offen'}</td></tr>`));
  $('siteList').innerHTML=tbl(['Baustelle','Adresse','Status'],sites.map(x=>`<tr><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.address)}</td><td>${escapeHTML(x.status)}</td></tr>`));
