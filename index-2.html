@@ -1,0 +1,80 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maler Volquardsen – Cloud</title><style>
+:root{color-scheme:dark;font-family:system-ui,Arial}*{box-sizing:border-box}body{background:#0b1520;color:#e9f3f0;margin:0}header{padding:24px;background:#12232d;border-bottom:1px solid #27433f}header h1{margin:0;font-size:24px}small,.muted{color:#a6bcb6}main{max-width:1060px;margin:auto;padding:20px}.card{background:#162631;border:1px solid #2a4545;border-radius:18px;padding:20px;margin:12px 0}nav{display:flex;gap:8px;flex-wrap:wrap}button{background:#73e0c0;color:#09231d;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}button.secondary{background:#29413f;color:#eaf5f1}input,select,textarea{width:100%;background:#0c1b26;border:1px solid #46635f;color:white;padding:12px;border-radius:10px;margin:6px 0 13px;font:inherit}label{display:block}form{max-width:600px}.hidden{display:none!important}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}table{border-collapse:collapse;width:100%;min-width:560px}td,th{padding:10px;text-align:left;border-bottom:1px solid #344843}.scroll{overflow:auto}.error{color:#ffb4a6}.success{color:#80e4c7}h2{font-size:20px}#message{padding:8px 0;min-height:20px}
+</style></head><body><header><h1>Maler Volquardsen <small>Cloud-Neustart</small></h1><div class="muted">Arbeitszeiten manuell · Baustellen · Material · Urlaub · Krankheit</div></header><main>
+<div class="card" id="setup"><h2>Cloud-Verbindung einrichten</h2><p class="muted">Einmalig die URL und den öffentlichen anon/publishable key deines NEUEN Supabase-Projekts eingeben. Niemals den service_role-Schlüssel.</p><label>Projekt-URL<input id="url" placeholder="https://xxxx.supabase.co"></label><label>Publishable/anon key<input id="key" placeholder="sb_publishable_... oder eyJ..."></label><button id="connect">Verbinden</button></div>
+<div class="card hidden" id="login"><h2>Anmelden</h2><label>E-Mail<input id="email" type="email"></label><label>Passwort<input id="password" type="password"></label><button id="signIn">Anmelden</button><p class="muted">Mitarbeiter werden im neuen Supabase-Projekt unter Authentication → Users eingeladen. Nach der Einladung können sie sich mit ihrem Passwort anmelden.</p></div>
+<div class="hidden" id="app"><div class="card"><span id="who"></span> <button class="secondary" id="signOut">Abmelden</button></div><nav><button data-view="overview">Übersicht</button><button data-view="hours">Stunden / Krankheit</button><button data-view="sites">Baustellen</button><button data-view="materials">Material</button><button data-view="vacation">Urlaub</button><button data-view="team">Team</button></nav>
+<section id="overview" class="card"><h2>Meine Übersicht</h2><div id="overviewContent"></div></section>
+<section id="hours" class="card hidden"><h2>Stunden oder Krankheit eintragen</h2><form id="hoursForm"><label>Art<select id="entryKind"><option value="work">Arbeitszeit</option><option value="sick">Krankheit</option></select></label><label>Datum<input id="entryDay" type="date" required></label><div id="workFields"><label>Baustelle<select id="entrySite"></select></label><label>Stunden gesamt (inkl. Pause)<input id="gross" type="number" min="0.25" max="24" step=".25" value="8"></label><label>Pause in Minuten<input id="pause" type="number" min="0" max="1440" value="30"></label></div><label>Notiz<input id="entryNote"></label><button>Speichern</button></form><h2>Einträge</h2><div class="scroll" id="entryList"></div></section>
+<section id="sites" class="card hidden"><h2>Baustellen</h2><form id="siteForm" class="adminOnly"><label>Name<input id="siteName" required></label><label>Adresse<input id="siteAddress"></label><button>Baustelle anlegen</button></form><div class="scroll" id="siteList"></div></section>
+<section id="materials" class="card hidden"><h2>Materialverbrauch</h2><form id="materialForm"><label>Baustelle<select id="materialSite"></select></label><label>Material<input id="materialName" required></label><label>Menge<input id="materialQty" type="number" min=".01" step=".01" required></label><label>Einheit<select id="materialUnit"><option>Liter</option><option>kg</option><option>Stück</option><option>Rolle</option><option>Eimer</option></select></label><button>Verbrauch eintragen</button></form><div class="scroll" id="materialList"></div></section>
+<section id="vacation" class="card hidden"><h2>Urlaub</h2><p class="muted">Urlaub wird ausschließlich vom Chef nach persönlicher Absprache eingetragen. Er zählt nicht als geleistete Arbeitszeit.</p><form id="vacationForm" class="adminOnly"><label>Mitarbeiter<select id="vacationUser"></select></label><label>Von<input id="vacationFrom" type="date" required></label><label>Bis<input id="vacationTo" type="date" required></label><button>Urlaub freigeben</button></form><div class="scroll" id="vacationList"></div></section>
+<section id="team" class="card hidden"><h2>Team und Baustellenzuordnung</h2><p class="muted">Mitarbeiter zuerst in Supabase Authentication → Users einladen. Danach hier einer Baustelle zuordnen.</p><form id="memberForm"><label>Mitarbeiter<select id="memberUser"></select></label><label>Baustelle<select id="memberSite"></select></label><button>Zuweisen</button></form><div class="scroll" id="teamList"></div></section>
+</div><div id="message" role="status"></div></main><script type="module">
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+const $=x=>document.getElementById(x);let sb=null,me=null,profile=null,sites=[],profiles=[];
+const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const msg=(s,bad=false)=>{$('message').textContent=s;$('message').className=bad?'error':'success'};
+const fail=e=>{msg(e.message||String(e),true);console.error(e)};
+function selectOptions(el,items){el.innerHTML=items.map(x=>`<option value="${escapeHTML(x.id)}">${escapeHTML(x.name)}</option>`).join('')}
+function tbl(headers,rows){return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`}
+function switchView(id){document.querySelectorAll('#app section').forEach(s=>s.classList.toggle('hidden',s.id!==id))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
+$('entryKind').onchange=()=>$('workFields').classList.toggle('hidden',$('entryKind').value==='sick');
+$('entryDay').value=new Date().toLocaleDateString('sv-SE');
+$('connect').onclick=async()=>{
+ try{
+ const url=$('url').value.trim(),key=$('key').value.trim();
+ if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url)||!key)throw Error('Bitte gültige Supabase-URL und öffentlichen Schlüssel eingeben.');
+ sb=createClient(url,key);
+ localStorage.setItem('mv-cloud-config',JSON.stringify({url,key}));
+ $('setup').classList.add('hidden');$('login').classList.remove('hidden');
+ await init();
+ }catch(e){fail(e)}
+};
+async function init(){const {data:{session},error}=await sb.auth.getSession();if(error)throw error;if(session)await load();else $('login').classList.remove('hidden')}
+$('signIn').onclick=async()=>{try{const {error}=await sb.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)throw error;await load()}catch(e){fail(e)}};
+$('signOut').onclick=async()=>{await sb.auth.signOut();me=null;$('app').classList.add('hidden');$('login').classList.remove('hidden');msg('Abgemeldet')};
+async function query(table,columns='*'){const {data,error}=await sb.from(table).select(columns);if(error)throw error;return data}
+async function load(){
+ const {data:{user},error}=await sb.auth.getUser();if(error||!user)throw error||Error('Bitte anmelden');
+ me=user;profile=(await query('profiles')).find(x=>x.id===me.id);
+ if(!profile)throw Error('Profil fehlt. Bitte SQL-Einrichtung prüfen.');
+ $('login').classList.add('hidden');$('app').classList.remove('hidden');
+ $('who').textContent=`${profile.display_name||me.email} · ${profile.role==='admin'?'Chef':'Mitarbeiter'}`;
+ const admin=profile.role==='admin';
+ document.querySelectorAll('.adminOnly').forEach(x=>x.classList.toggle('hidden',!admin));
+ $('team').querySelectorAll('form').forEach(x=>x.classList.toggle('hidden',!admin));
+ document.querySelector('nav button[data-view="team"]').classList.toggle('hidden',!admin);
+ sites=await query('sites');profiles=admin?await query('profiles'):[profile];
+ selectOptions($('entrySite'),sites.map(x=>({...x,name:x.name})));
+ selectOptions($('materialSite'),sites);
+ selectOptions($('memberSite'),sites);
+ selectOptions($('memberUser'),profiles.map(x=>({id:x.id,name:x.display_name||x.id})));
+ selectOptions($('vacationUser'),profiles.map(x=>({id:x.id,name:x.display_name||x.id})));
+ const entries=await query('entries'),vacations=await query('vacations'),materials=await query('material_usage');
+ $('overviewContent').innerHTML=`<div class="grid"><div class="card"><h2>${sites.length}</h2>Meine Baustellen</div><div class="card"><h2>${(entries.filter(x=>x.kind==='work').reduce((a,x)=>a+x.minutes,0)/60).toFixed(2)} h</h2>${admin?'Erfasste':'Meine'} Nettoarbeitszeit</div><div class="card"><h2>${vacations.length}</h2>Urlaubseinträge</div></div>`;
+ $('entryList').innerHTML=tbl(['Datum','Mitarbeiter','Art','Baustelle','Nettozeit','Freigabe'],entries.sort((a,b)=>b.day.localeCompare(a.day)).map(x=>`<tr><td>${escapeHTML(x.day)}</td><td>${escapeHTML(profiles.find(p=>p.id===x.user_id)?.display_name||'Ich')}</td><td>${x.kind==='sick'?'Krankheit':'Arbeitszeit'}</td><td>${escapeHTML(sites.find(s=>s.id===x.site_id)?.name||'–')}</td><td>${x.kind==='work'?(x.minutes/60).toFixed(2)+' h':'–'}</td><td>${x.approved?'Ja':'Offen'}</td></tr>`));
+ $('siteList').innerHTML=tbl(['Baustelle','Adresse','Status'],sites.map(x=>`<tr><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.address)}</td><td>${escapeHTML(x.status)}</td></tr>`));
+ $('materialList').innerHTML=tbl(['Datum','Baustelle','Material','Menge'],materials.map(x=>`<tr><td>${escapeHTML(x.day)}</td><td>${escapeHTML(sites.find(s=>s.id===x.site_id)?.name)}</td><td>${escapeHTML(x.material)}</td><td>${escapeHTML(x.quantity)} ${escapeHTML(x.unit)}</td></tr>`));
+ $('vacationList').innerHTML=tbl(['Mitarbeiter','Von','Bis'],vacations.map(x=>`<tr><td>${escapeHTML(profiles.find(p=>p.id===x.user_id)?.display_name||'Ich')}</td><td>${escapeHTML(x.start_day)}</td><td>${escapeHTML(x.end_day)}</td></tr>`));
+ const members=admin?await query('site_members'):[];
+ $('teamList').innerHTML=tbl(['Mitarbeiter','Baustelle'],members.map(x=>`<tr><td>${escapeHTML(profiles.find(p=>p.id===x.user_id)?.display_name||x.user_id)}</td><td>${escapeHTML(sites.find(s=>s.id===x.site_id)?.name||x.site_id)}</td></tr>`));
+ msg('Cloud-Daten geladen');
+}
+async function insert(table,values){const {error}=await sb.from(table).insert(values);if(error)throw error;await load()}
+function onForm(id,fn){$(id).onsubmit=async e=>{e.preventDefault();try{await fn();e.target.reset();msg('Gespeichert')}catch(e){fail(e)}}}
+onForm('hoursForm',async()=>{
+ const kind=$('entryKind').value,day=$('entryDay').value;
+ if(!day)throw Error('Datum fehlt');
+ if(kind==='sick'){await insert('entries',{user_id:me.id,day,kind,site_id:null,minutes:0,note:$('entryNote').value});return}
+ const site_id=$('entrySite').value,gross=Number($('gross').value)*60,pause=Number($('pause').value),minutes=Math.round(gross-pause);
+ if(!site_id||!Number.isFinite(minutes)||minutes<=0||minutes>1440)throw Error('Baustelle und gültige Nettozeit erforderlich');
+ await insert('entries',{user_id:me.id,site_id,day,kind,minutes,note:$('entryNote').value});
+});
+onForm('siteForm',()=>insert('sites',{name:$('siteName').value.trim(),address:$('siteAddress').value.trim()}));
+onForm('materialForm',()=>insert('material_usage',{user_id:me.id,site_id:$('materialSite').value,material:$('materialName').value.trim(),quantity:Number($('materialQty').value),unit:$('materialUnit').value}));
+onForm('vacationForm',()=>insert('vacations',{user_id:$('vacationUser').value,start_day:$('vacationFrom').value,end_day:$('vacationTo').value}));
+onForm('memberForm',()=>insert('site_members',{user_id:$('memberUser').value,site_id:$('memberSite').value}));
+const config=JSON.parse(localStorage.getItem('mv-cloud-config')||'null');if(config){$('url').value=config.url;$('key').value=config.key}
+</script></body></html>
